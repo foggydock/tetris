@@ -129,6 +129,32 @@
     box-shadow: 0 4px 0 #b45309;
   }
   #overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b45309; }
+  #startScreen {
+    position: fixed; inset: 0;
+    background: radial-gradient(circle at 50% 30%, #312e81, #0f172a);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+    z-index: 20;
+    text-align: center;
+    padding: 20px;
+  }
+  #startScreen .titleEmoji { font-size: 60px; }
+  #startScreen h2 { font-size: 30px; color: #fde68a; margin: 0; }
+  #startScreen .hs { font-size: 16px; color: #c7d2fe; }
+  #startScreen button {
+    font-size: 24px;
+    padding: 18px 48px;
+    border-radius: 16px;
+    border: none;
+    background: #22c55e;
+    color: #052e16;
+    font-weight: bold;
+    box-shadow: 0 5px 0 #15803d;
+  }
+  #startScreen button:active { transform: translateY(4px); box-shadow: 0 1px 0 #15803d; }
 </style>
 </head>
 <body>
@@ -155,6 +181,10 @@
         <div class="label">ライン</div>
         <div class="value" id="lines">0</div>
       </div>
+      <div class="panel">
+        <div class="label">さいこう</div>
+        <div class="value" id="highscore">0</div>
+      </div>
     </div>
   </div>
   <div id="controls">
@@ -168,7 +198,15 @@
 <div id="overlay">
   <h2 id="overlayTitle">ゲームオーバー</h2>
   <p id="overlayScore">スコア: 0</p>
+  <p id="overlayHighscore">さいこうスコア: 0</p>
   <button id="restartBtn">もういちど あそぶ</button>
+</div>
+
+<div id="startScreen">
+  <div class="titleEmoji">🎮</div>
+  <h2>そうしのテトリス</h2>
+  <p class="hs" id="startHighscore">さいこうスコア: 0</p>
+  <button id="startBtn">あそぶ</button>
 </div>
 
 <script>
@@ -187,6 +225,52 @@
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
   const overlayScore = document.getElementById('overlayScore');
+  const overlayHighscore = document.getElementById('overlayHighscore');
+  const highscoreEl = document.getElementById('highscore');
+  const startScreen = document.getElementById('startScreen');
+  const startHighscore = document.getElementById('startHighscore');
+
+  const HS_KEY = 'tetris-soushi-highscore';
+  let highscore = 0;
+  try { highscore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0; } catch (e) {}
+
+  // --- sound (WebAudio, no files needed) ---
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, duration, type, gainVal) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = gainVal != null ? gainVal : 0.08;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+  function sfxMove() { beep(220, 0.05, 'square', 0.04); }
+  function sfxRotate() { beep(440, 0.06, 'square', 0.05); }
+  function sfxDrop() { beep(150, 0.08, 'square', 0.06); }
+  function sfxLine(count) {
+    const freqs = [523, 659, 784, 1047];
+    freqs.slice(0, Math.max(1, count)).forEach((f, i) => {
+      setTimeout(() => beep(f, 0.15, 'triangle', 0.08), i * 80);
+    });
+  }
+  function sfxGameOver() {
+    [392, 330, 262, 196].forEach((f, i) => {
+      setTimeout(() => beep(f, 0.25, 'sawtooth', 0.06), i * 150);
+    });
+  }
 
   const COLORS = {
     I: '#22d3ee',
@@ -209,7 +293,7 @@
   };
   const TYPES = Object.keys(SHAPES);
 
-  let grid, current, next, score, level, lines, dropInterval, dropTimer, gameOver, paused, rafId, lastTime;
+  let grid, current, next, score, level, lines, dropInterval, dropTimer, gameOver, paused, rafId, lastTime, started;
 
   function newGrid() {
     return Array.from({length: ROWS}, () => Array(COLS).fill(null));
@@ -281,6 +365,7 @@
       level = Math.floor(lines / 10) + 1;
       dropInterval = Math.max(120, 800 - (level - 1) * 70);
       updateHUD();
+      sfxLine(cleared);
     }
   }
 
@@ -294,15 +379,16 @@
   }
 
   function move(dx) {
-    if (gameOver || paused) return;
+    if (!started || gameOver || paused) return;
     if (!collides(current, dx, 0)) {
       current.x += dx;
+      sfxMove();
       draw();
     }
   }
 
   function softDrop() {
-    if (gameOver || paused) return;
+    if (!started || gameOver || paused) return;
     if (!collides(current, 0, 1)) {
       current.y += 1;
       score += 1;
@@ -314,7 +400,7 @@
   }
 
   function hardDrop() {
-    if (gameOver || paused) return;
+    if (!started || gameOver || paused) return;
     let dist = 0;
     while (!collides(current, 0, 1)) {
       current.y += 1;
@@ -322,18 +408,20 @@
     }
     score += dist * 2;
     updateHUD();
+    sfxDrop();
     lockPiece();
     draw();
   }
 
   function rotate() {
-    if (gameOver || paused) return;
+    if (!started || gameOver || paused) return;
     const rotated = normalize(rotateCells(current.cells));
     const kicks = [0, -1, 1, -2, 2];
     for (const k of kicks) {
       if (!collides(current, k, 0, rotated)) {
         current.cells = rotated;
         current.x += k;
+        sfxRotate();
         draw();
         return;
       }
@@ -344,13 +432,27 @@
     scoreEl.textContent = score;
     levelEl.textContent = level;
     linesEl.textContent = lines;
+    highscoreEl.textContent = highscore;
+  }
+
+  function saveHighscore() {
+    try { localStorage.setItem(HS_KEY, String(highscore)); } catch (e) {}
   }
 
   function endGame() {
     gameOver = true;
-    overlayTitle.textContent = 'ゲームオーバー';
+    let isNewBest = false;
+    if (score > highscore) {
+      highscore = score;
+      saveHighscore();
+      isNewBest = true;
+    }
+    updateHUD();
+    overlayTitle.textContent = isNewBest ? '🎉 さいこうきろく！' : 'ゲームオーバー';
     overlayScore.textContent = 'スコア: ' + score;
+    overlayHighscore.textContent = 'さいこうスコア: ' + highscore;
     overlay.style.display = 'flex';
+    sfxGameOver();
   }
 
   function resetGame() {
@@ -448,7 +550,7 @@
   }
 
   function loop(time) {
-    if (!gameOver && !paused) {
+    if (started && !gameOver && !paused) {
       const delta = time - lastTime;
       lastTime = time;
       dropTimer += delta;
@@ -476,7 +578,16 @@
   document.getElementById('btnRight').addEventListener('click', () => move(1));
   document.getElementById('btnRotate').addEventListener('click', () => rotate());
   document.getElementById('btnDrop').addEventListener('click', () => hardDrop());
-  document.getElementById('restartBtn').addEventListener('click', resetGame);
+  document.getElementById('restartBtn').addEventListener('click', () => {
+    ensureAudio();
+    resetGame();
+  });
+  document.getElementById('startBtn').addEventListener('click', () => {
+    ensureAudio();
+    startScreen.style.display = 'none';
+    started = true;
+    resetGame();
+  });
 
   // swipe on board
   let touchStartX = null, touchStartY = null, touchStartTime = 0, lastMoveX = 0;
@@ -518,8 +629,10 @@
 
   window.addEventListener('resize', resize);
   grid = newGrid();
+  started = false;
+  startHighscore.textContent = 'さいこうスコア: ' + highscore;
+  updateHUD();
   resize();
-  resetGame();
   rafId = requestAnimationFrame(loop);
 
   if ('serviceWorker' in navigator) {
