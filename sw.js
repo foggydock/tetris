@@ -1,5 +1,7 @@
 const VERSION = 'v1';
-const CACHE   = 'tetris-' + VERSION;
+// 同じドメイン（foggydock.github.io）の他のアプリとキャッシュの置き場が共通なので、消すのはこの接頭辞の古い版だけにする
+const CACHE_PREFIX = 'tetris-';
+const CACHE   = CACHE_PREFIX + VERSION;
 
 const url   = path => new URL(path, self.location).toString();
 const INDEX = url('index.html');
@@ -17,7 +19,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k.startsWith(CACHE_PREFIX) && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
