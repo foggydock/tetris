@@ -24,7 +24,8 @@
     flex-direction: column;
     align-items: center;
     height: 100%;
-    padding: 8px;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+             max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   }
   h1 {
     margin: 4px 0;
@@ -96,7 +97,6 @@
     font-size: 26px;
     padding: 14px 0;
     box-shadow: 0 4px 0 #312e81;
-    active: none;
   }
   .btn:active {
     transform: translateY(3px);
@@ -118,7 +118,7 @@
   }
   #overlay h2 { font-size: 32px; color: #fde68a; margin: 0; }
   #overlay p { font-size: 18px; margin: 0; color: #e0e7ff; }
-  #overlay button {
+  #restartBtn {
     font-size: 20px;
     padding: 14px 32px;
     border-radius: 14px;
@@ -128,7 +128,7 @@
     font-weight: bold;
     box-shadow: 0 4px 0 #b45309;
   }
-  #overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b45309; }
+  #restartBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b45309; }
   #startScreen {
     position: fixed; inset: 0;
     background: radial-gradient(circle at 50% 30%, #312e81, #0f172a);
@@ -144,17 +144,6 @@
   #startScreen .titleEmoji { font-size: 60px; }
   #startScreen h2 { font-size: 30px; color: #fde68a; margin: 0; }
   #startScreen .hs { font-size: 16px; color: #c7d2fe; }
-  #startScreen button {
-    font-size: 24px;
-    padding: 18px 48px;
-    border-radius: 16px;
-    border: none;
-    background: #22c55e;
-    color: #052e16;
-    font-weight: bold;
-    box-shadow: 0 5px 0 #15803d;
-  }
-  #startScreen button:active { transform: translateY(4px); box-shadow: 0 1px 0 #15803d; }
   #modeList {
     display: flex;
     flex-direction: column;
@@ -282,9 +271,24 @@
   let clearedBlocks = 0;
   let timeLeftMs = TIME_LIMIT_MS;
 
-  const HS_KEY = 'tetris-soushi-highscore';
-  let highscore = 0;
-  try { highscore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0; } catch (e) {}
+  const HS_KEY_PREFIX = 'tetris-soushi-highscore-';
+  const HS_KEY_LEGACY = 'tetris-soushi-highscore';
+  function getHighscore(m) {
+    try { return parseInt(localStorage.getItem(HS_KEY_PREFIX + m) || '0', 10) || 0; }
+    catch (e) { return 0; }
+  }
+  function setHighscore(m, v) {
+    try { localStorage.setItem(HS_KEY_PREFIX + m, String(v)); } catch (e) {}
+  }
+  // 旧バージョンの共通ハイスコアが残っていれば、ラインクリアモードの記録として引き継ぐ
+  try {
+    const legacy = localStorage.getItem(HS_KEY_LEGACY);
+    if (legacy !== null && localStorage.getItem(HS_KEY_PREFIX + 'lines') === null) {
+      localStorage.setItem(HS_KEY_PREFIX + 'lines', legacy);
+    }
+    localStorage.removeItem(HS_KEY_LEGACY);
+  } catch (e) {}
+  let highscore = getHighscore('lines');
 
   // --- sound (WebAudio, no files needed) ---
   let audioCtx = null;
@@ -314,7 +318,7 @@
   function sfxDrop() { beep(150, 0.08, 'square', 0.06); }
   function sfxLine(count) {
     const freqs = [523, 659, 784, 1047];
-    freqs.slice(0, Math.max(1, count)).forEach((f, i) => {
+    freqs.slice(0, count).forEach((f, i) => {
       setTimeout(() => beep(f, 0.15, 'triangle', 0.08), i * 80);
     });
   }
@@ -345,7 +349,7 @@
   };
   const TYPES = Object.keys(SHAPES);
 
-  let grid, current, next, score, level, lines, dropInterval, dropTimer, gameOver, paused, rafId, lastTime, started;
+  let grid, current, next, score = 0, level = 1, lines = 0, dropInterval, dropTimer, gameOver, paused, rafId, lastTime, started;
 
   function newGrid() {
     return Array.from({length: ROWS}, () => Array(COLS).fill(null));
@@ -356,7 +360,8 @@
   }
 
   function makePiece(type) {
-    const cells = SHAPES[type].map(([x,y]) => ({x, y}));
+    // 原点(0,0)に寄せておかないと、回転のたびに位置がずれてしまう
+    const cells = normalize(SHAPES[type].map(([x,y]) => ({x, y})));
     const xs = cells.map(c=>c.x);
     const w = Math.max(...xs) + 1;
     return {
@@ -368,9 +373,8 @@
   }
 
   function rotateCells(cells) {
-    // rotate around bounding box center (approx), using classic 90deg rotation
-    const size = 4;
-    return cells.map(({x,y}) => ({ x: size - 1 - y, y: x }));
+    // 90度回転（正確な中心位置はこの後の normalize() で吸収される）
+    return cells.map(({x,y}) => ({ x: -y, y: x }));
   }
 
   function normalize(cells) {
@@ -397,7 +401,7 @@
       if (gy >= 0) grid[gy][gx] = current.type;
     }
     clearLines();
-    spawnPiece();
+    if (!gameOver) spawnPiece();
   }
 
   function clearLines() {
@@ -430,14 +434,19 @@
   function spawnPiece() {
     current = next || makePiece(randomType());
     next = makePiece(randomType());
+    dropTimer = 0;
     drawNext();
     if (collides(current, 0, 0)) {
       finishGame('over');
     }
   }
 
+  function canAct() {
+    return started && !gameOver && !paused;
+  }
+
   function move(dx) {
-    if (!started || gameOver || paused) return;
+    if (!canAct()) return;
     if (!collides(current, dx, 0)) {
       current.x += dx;
       sfxMove();
@@ -446,7 +455,7 @@
   }
 
   function softDrop() {
-    if (!started || gameOver || paused) return;
+    if (!canAct()) return;
     if (!collides(current, 0, 1)) {
       current.y += 1;
       score += 1;
@@ -458,7 +467,7 @@
   }
 
   function hardDrop() {
-    if (!started || gameOver || paused) return;
+    if (!canAct()) return;
     let dist = 0;
     while (!collides(current, 0, 1)) {
       current.y += 1;
@@ -472,7 +481,7 @@
   }
 
   function rotate() {
-    if (!started || gameOver || paused) return;
+    if (!canAct()) return;
     const rotated = normalize(rotateCells(current.cells));
     const kicks = [0, -1, 1, -2, 2];
     for (const k of kicks) {
@@ -514,16 +523,17 @@
     updateGoalDisplay();
   }
 
-  function saveHighscore() {
-    try { localStorage.setItem(HS_KEY, String(highscore)); } catch (e) {}
+  function refreshStartHighscore() {
+    startHighscore.textContent = 'さいこうスコア: ' + getHighscore(mode);
   }
 
   function finishGame(reason) {
+    if (gameOver) return;
     gameOver = true;
     let isNewBest = false;
     if (score > highscore) {
       highscore = score;
-      saveHighscore();
+      setHighscore(mode, highscore);
       isNewBest = true;
     }
     updateHUD();
@@ -553,8 +563,6 @@
     spawnPiece();
     updateHUD();
     overlay.style.display = 'none';
-    lastTime = performance.now();
-    dropTimer = 0;
     draw();
   }
 
@@ -569,8 +577,7 @@
   }
 
   function draw() {
-    ctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
-    // grid background
+    // grid background（全面を塗りつぶすので clearRect は不要）
     ctx.fillStyle = '#0b1020';
     ctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
     ctx.strokeStyle = 'rgba(255,255,255,0.05)';
@@ -611,7 +618,6 @@
   }
 
   function drawNext() {
-    nctx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
     nctx.fillStyle = '#0b1020';
     nctx.fillRect(0,0,nextCanvas.width,nextCanvas.height);
     if (!next) return;
@@ -628,7 +634,6 @@
   }
 
   function resize() {
-    const wrap = document.getElementById('boardWrap');
     const maxH = window.innerHeight - 220;
     const maxW = window.innerWidth - 150;
     CELL = Math.floor(Math.min(maxH / ROWS, maxW / COLS, 32));
@@ -685,12 +690,14 @@
   document.getElementById('backToModeBtn').addEventListener('click', () => {
     overlay.style.display = 'none';
     started = false;
+    refreshStartHighscore();
     startScreen.style.display = 'flex';
   });
   document.querySelectorAll('.modeBtn').forEach(btn => {
     btn.addEventListener('click', () => {
       ensureAudio();
       mode = btn.dataset.mode;
+      highscore = getHighscore(mode);
       startScreen.style.display = 'none';
       started = true;
       resetGame();
@@ -736,9 +743,12 @@
   });
 
   window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', () => {
+    paused = document.hidden;
+  });
   grid = newGrid();
   started = false;
-  startHighscore.textContent = 'さいこうスコア: ' + highscore;
+  refreshStartHighscore();
   updateHUD();
   resize();
   rafId = requestAnimationFrame(loop);
