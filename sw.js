@@ -1,11 +1,11 @@
-const VERSION = 'v2';
+const VERSION = 'v3';
 // 同じドメイン（foggydock.github.io）の他のアプリとキャッシュの置き場が共通なので、消すのはこの接頭辞の古い版だけにする
 const CACHE_PREFIX = 'tetris-';
 const CACHE   = CACHE_PREFIX + VERSION;
 
 const url   = path => new URL(path, self.location).toString();
 const INDEX = url('index.html');
-const ASSETS = ['index.html', 'manifest.json',
+const ASSETS = ['index.html', 'game-logic.js', 'manifest.json',
                 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(url);
 
 self.addEventListener('install', e => {
