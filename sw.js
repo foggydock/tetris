@@ -1,11 +1,11 @@
-const VERSION = 'v1';
+const VERSION = 'v2';
 // 同じドメイン（foggydock.github.io）の他のアプリとキャッシュの置き場が共通なので、消すのはこの接頭辞の古い版だけにする
 const CACHE_PREFIX = 'tetris-';
 const CACHE   = CACHE_PREFIX + VERSION;
 
 const url   = path => new URL(path, self.location).toString();
 const INDEX = url('index.html');
-const ASSETS = ['./', 'index.html', 'manifest.json',
+const ASSETS = ['index.html', 'manifest.json',
                 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(url);
 
 self.addEventListener('install', e => {
@@ -33,27 +33,29 @@ self.addEventListener('fetch', e => {
                  (req.headers.get('accept') || '').includes('text/html');
 
   if (isHTML) {
-    e.respondWith(
-      fetch(req.url, { cache: 'reload', credentials: 'same-origin' })
-        .then(res => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(INDEX, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match(INDEX).then(r => r || caches.match(url('./'))))
-    );
+    e.respondWith((async () => {
+      try {
+        const res = await fetch(req.url, { cache: 'reload' });
+        if (res && res.ok) {
+          const copy = res.clone();
+          e.waitUntil(caches.open(CACHE).then(c => c.put(INDEX, copy)));
+        }
+        return res;
+      } catch (err) {
+        return (await caches.match(INDEX)) || Response.error();
+      }
+    })());
     return;
   }
 
-  e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res && res.ok) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
-      }
-      return res;
-    }))
-  );
+  e.respondWith((async () => {
+    const hit = await caches.match(req);
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res && res.ok) {
+      const copy = res.clone();
+      e.waitUntil(caches.open(CACHE).then(c => c.put(req, copy)));
+    }
+    return res;
+  })());
 });
