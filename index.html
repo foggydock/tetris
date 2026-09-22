@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="テトリス">
 <meta name="theme-color" content="#4338ca">
+<script src="./game-logic.js"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body {
@@ -338,16 +339,8 @@
     L: '#fb923c'
   };
 
-  const SHAPES = {
-    I: [[0,1],[1,1],[2,1],[3,1]],
-    O: [[1,0],[2,0],[1,1],[2,1]],
-    T: [[1,0],[0,1],[1,1],[2,1]],
-    S: [[1,0],[2,0],[0,1],[1,1]],
-    Z: [[0,0],[1,0],[1,1],[2,1]],
-    J: [[0,0],[0,1],[1,1],[2,1]],
-    L: [[2,0],[0,1],[1,1],[2,1]]
-  };
-  const TYPES = Object.keys(SHAPES);
+  // ミノの形・回転・当たり判定・スコア計算は game-logic.js（DOM非依存、ユニットテスト対象）に集約
+  const TYPES = TetrisLogic.TYPES;
 
   let grid, current, next, score = 0, level = 1, lines = 0, dropInterval, dropTimer, gameOver, paused, rafId, lastTime, started;
 
@@ -360,10 +353,8 @@
   }
 
   function makePiece(type) {
-    // 原点(0,0)に寄せておかないと、回転のたびに位置がずれてしまう
-    const cells = normalize(SHAPES[type].map(([x,y]) => ({x, y})));
-    const xs = cells.map(c=>c.x);
-    const w = Math.max(...xs) + 1;
+    const cells = TetrisLogic.shapeCells(type);
+    const w = TetrisLogic.pieceWidth(cells);
     return {
       type,
       cells,
@@ -372,26 +363,8 @@
     };
   }
 
-  function rotateCells(cells) {
-    // 90度回転（正確な中心位置はこの後の normalize() で吸収される）
-    return cells.map(({x,y}) => ({ x: -y, y: x }));
-  }
-
-  function normalize(cells) {
-    const minX = Math.min(...cells.map(c=>c.x));
-    const minY = Math.min(...cells.map(c=>c.y));
-    return cells.map(c => ({x: c.x - minX, y: c.y - minY}));
-  }
-
   function collides(piece, offX, offY, cells) {
-    const testCells = cells || piece.cells;
-    for (const c of testCells) {
-      const gx = piece.x + c.x + offX;
-      const gy = piece.y + c.y + offY;
-      if (gx < 0 || gx >= COLS || gy >= ROWS) return true;
-      if (gy >= 0 && grid[gy][gx]) return true;
-    }
-    return false;
+    return TetrisLogic.collides(grid, COLS, ROWS, piece, offX, offY, cells);
   }
 
   function lockPiece() {
@@ -405,22 +378,13 @@
   }
 
   function clearLines() {
-    let cleared = 0;
-    for (let y = ROWS - 1; y >= 0; y--) {
-      if (grid[y].every(cell => cell)) {
-        grid.splice(y, 1);
-        grid.unshift(Array(COLS).fill(null));
-        cleared++;
-        y++;
-      }
-    }
+    const cleared = TetrisLogic.clearLines(grid, COLS, ROWS);
     if (cleared > 0) {
-      const points = [0, 100, 300, 500, 800][cleared] * level;
-      score += points;
+      score += TetrisLogic.scoreForClear(cleared, level);
       lines += cleared;
       clearedBlocks += cleared * COLS;
-      level = Math.floor(lines / 10) + 1;
-      dropInterval = Math.max(120, 800 - (level - 1) * 70);
+      level = TetrisLogic.levelForLines(lines);
+      dropInterval = TetrisLogic.dropIntervalForLevel(level);
       updateHUD();
       sfxLine(cleared);
       if (mode === 'lines' && lines >= LINE_TARGET) {
@@ -482,16 +446,12 @@
 
   function rotate() {
     if (!canAct()) return;
-    const rotated = normalize(rotateCells(current.cells));
-    const kicks = [0, -1, 1, -2, 2];
-    for (const k of kicks) {
-      if (!collides(current, k, 0, rotated)) {
-        current.cells = rotated;
-        current.x += k;
-        sfxRotate();
-        draw();
-        return;
-      }
+    const result = TetrisLogic.tryRotate(grid, COLS, ROWS, current);
+    if (result) {
+      current.cells = result.cells;
+      current.x += result.dx;
+      sfxRotate();
+      draw();
     }
   }
 
