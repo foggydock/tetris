@@ -90,21 +90,28 @@
     max-width: 480px;
     padding: 8px 4px 4px;
   }
-  .btn {
-    background: #4338ca;
+  .raisedBtn {
+    background: var(--btn-bg, #4338ca);
+    box-shadow: 0 4px 0 var(--btn-shadow, #312e81);
     color: #fff;
     border: none;
     border-radius: 14px;
+  }
+  .raisedBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--btn-shadow, #312e81); }
+  .raisedBtn:disabled { opacity: .5; }
+  #pauseBtn { padding: 6px 16px; margin: 0 0 10px; flex-shrink: 0; }
+  #pauseMessage { position: absolute; inset: 0; background: #111827; border-radius: 12px; place-content: center; text-align: center; }
+  #pauseMessage:not([hidden]) { display: grid; }
+  #layoutNotice { position: fixed; inset: 0; z-index: 30; background: #0f172a; padding: 24px; text-align: center; place-content: center; }
+  #layoutNotice:not([hidden]) { display: grid; }
+  #layoutNotice small { font-size: 14px; }
+  .btn {
+    border-radius: 14px;
     font-size: 26px;
     padding: 14px 0;
-    box-shadow: 0 4px 0 #312e81;
   }
-  .btn:active {
-    transform: translateY(3px);
-    box-shadow: 0 1px 0 #312e81;
-  }
-  .btn.drop { background: #dc2626; box-shadow: 0 4px 0 #7f1d1d; }
-  .btn.rotate { background: #059669; box-shadow: 0 4px 0 #064e3b; }
+  .btn.drop { --btn-bg: #dc2626; --btn-shadow: #7f1d1d; }
+  .btn.rotate { --btn-bg: #059669; --btn-shadow: #064e3b; }
   #overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.75);
@@ -124,12 +131,11 @@
     padding: 14px 32px;
     border-radius: 14px;
     border: none;
-    background: #f59e0b;
+    --btn-bg: #f59e0b;
+    --btn-shadow: #b45309;
     color: #1e1b4b;
     font-weight: bold;
-    box-shadow: 0 4px 0 #b45309;
   }
-  #restartBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b45309; }
   #startScreen {
     position: fixed; inset: 0;
     background: radial-gradient(circle at 50% 30%, #312e81, #0f172a);
@@ -157,17 +163,13 @@
     padding: 16px 20px;
     border-radius: 14px;
     border: none;
-    background: #4338ca;
-    color: #fff;
     font-weight: bold;
-    box-shadow: 0 4px 0 #312e81;
     text-align: left;
   }
-  .modeBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #312e81; }
   .modeBtn .sub { display: block; font-size: 12px; font-weight: normal; color: #c7d2fe; margin-top: 2px; }
-  .modeBtn.lines { background: #059669; box-shadow: 0 4px 0 #064e3b; }
-  .modeBtn.time { background: #dc2626; box-shadow: 0 4px 0 #7f1d1d; }
-  .modeBtn.blocks { background: #d97706; box-shadow: 0 4px 0 #92400e; }
+  .modeBtn.lines { --btn-bg: #059669; --btn-shadow: #064e3b; }
+  .modeBtn.time { --btn-bg: #dc2626; --btn-shadow: #7f1d1d; }
+  .modeBtn.blocks { --btn-bg: #d97706; --btn-shadow: #92400e; }
   #backToModeBtn {
     font-size: 14px;
     padding: 8px 16px;
@@ -178,14 +180,27 @@
     text-decoration: underline;
   }
   #goalPanel .value { font-size: 18px; }
+  @media (max-height: 650px) {
+    #sidebar { gap: 3px; }
+    .panel { padding: 3px; }
+    .panel .value { font-size: 16px; line-height: 20px; }
+    .panel .label { margin-bottom: 1px; line-height: 14px; }
+    canvas#next { width: 50px; height: 50px; }
+    #goalPanel .value { font-size: 16px; }
+    #startScreen { gap: 8px; }
+    #startScreen .titleEmoji { font-size: 32px; }
+    #startScreen h2 { font-size: 24px; }
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <h1>🎮 そうしのテトリス</h1>
+  <button class="raisedBtn" id="pauseBtn" disabled>⏸ ひとやすみ</button>
   <div id="main">
     <div id="boardWrap">
-      <canvas id="board"></canvas>
+      <canvas id="board" aria-label="テトリスのばん"></canvas>
+      <div id="pauseMessage" hidden>ひとやすみ中</div>
     </div>
     <div id="sidebar">
       <div class="panel">
@@ -215,18 +230,20 @@
     </div>
   </div>
   <div id="controls">
-    <button class="btn" id="btnLeft">◀</button>
-    <button class="btn rotate" id="btnRotate">↻</button>
-    <button class="btn" id="btnRight">▶</button>
-    <button class="btn drop" id="btnDrop">⬇︎</button>
+    <button class="raisedBtn btn" id="btnLeft" aria-label="ひだりへ">◀</button>
+    <button class="raisedBtn btn rotate" id="btnRotate" aria-label="まわす">↻</button>
+    <button class="raisedBtn btn" id="btnRight" aria-label="みぎへ">▶</button>
+    <button class="raisedBtn btn drop" id="btnDrop" aria-label="いっきにおとす">⬇︎</button>
   </div>
 </div>
+
+<div id="layoutNotice" hidden>たてむきで あそんでね<br><small>画面が小さいときは、ウィンドウを大きくしてね</small></div>
 
 <div id="overlay">
   <h2 id="overlayTitle">ゲームオーバー</h2>
   <p id="overlayScore">スコア: 0</p>
   <p id="overlayHighscore">さいこうスコア: 0</p>
-  <button id="restartBtn">もういちど あそぶ</button>
+  <button class="raisedBtn" id="restartBtn">もういちど あそぶ</button>
   <button id="backToModeBtn">モードを えらびなおす</button>
 </div>
 
@@ -235,9 +252,9 @@
   <h2>そうしのテトリス</h2>
   <p class="hs" id="startHighscore">さいこうスコア: 0</p>
   <div id="modeList">
-    <button class="modeBtn lines" data-mode="lines">🟩 ラインクリアモード<span class="sub">10ライン けしたら クリア！</span></button>
-    <button class="modeBtn time" data-mode="time">🟥 タイムアタック<span class="sub">3ぷんかん で なんてん とれるか</span></button>
-    <button class="modeBtn blocks" data-mode="blocks">🟧 ブロックせんめつモード<span class="sub">200こ けしたら クリア！</span></button>
+    <button class="raisedBtn modeBtn lines" data-mode="lines">🟩 ラインクリアモード<span class="sub">10ライン けしたら クリア！</span></button>
+    <button class="raisedBtn modeBtn time" data-mode="time">🟥 タイムアタック<span class="sub">3ぷんかん で なんてん とれるか</span></button>
+    <button class="raisedBtn modeBtn blocks" data-mode="blocks">🟧 ブロックせんめつモード<span class="sub">200こ けしたら クリア！</span></button>
   </div>
 </div>
 
@@ -263,6 +280,10 @@
   const startHighscore = document.getElementById('startHighscore');
   const goalLabel = document.getElementById('goalLabel');
   const goalValue = document.getElementById('goalValue');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const pauseMessage = document.getElementById('pauseMessage');
+  const layoutNotice = document.getElementById('layoutNotice');
+  let layoutBlocked = false;
 
   const LINE_TARGET = 10;
   const BLOCK_TARGET = 200;
@@ -342,7 +363,7 @@
   // ミノの形・回転・当たり判定・スコア計算は game-logic.js（DOM非依存、ユニットテスト対象）に集約
   const TYPES = TetrisLogic.TYPES;
 
-  let grid, current, next, score = 0, level = 1, lines = 0, dropInterval, dropTimer, gameOver, paused, rafId, lastTime, started;
+  let grid, current, next, score = 0, level = 1, lines = 0, dropInterval, dropTimer, gameOver, paused = false, lastTime = null, started;
 
   function newGrid() {
     return Array.from({length: ROWS}, () => Array(COLS).fill(null));
@@ -405,8 +426,26 @@
     }
   }
 
+  function isPaused() {
+    return paused || document.hidden || layoutBlocked;
+  }
+
+  function updatePauseDisplay() {
+    pauseBtn.disabled = !started || gameOver;
+    pauseBtn.textContent = paused ? '▶ つづける' : '⏸ ひとやすみ';
+    pauseBtn.setAttribute('aria-pressed', String(paused));
+    pauseMessage.hidden = !started || gameOver || !isPaused();
+  }
+
+  pauseBtn.addEventListener('click', () => {
+    if (!started || gameOver) return;
+    paused = !paused;
+    lastTime = null;
+    updatePauseDisplay();
+  });
+
   function canAct() {
-    return started && !gameOver && !paused;
+    return started && !gameOver && !isPaused();
   }
 
   function move(dx) {
@@ -490,6 +529,7 @@
   function finishGame(reason) {
     if (gameOver) return;
     gameOver = true;
+    updatePauseDisplay();
     let isNewBest = false;
     if (score > highscore) {
       highscore = score;
@@ -519,6 +559,8 @@
     timeLeftMs = TIME_LIMIT_MS;
     dropInterval = 800;
     gameOver = false; paused = false;
+    lastTime = null;
+    updatePauseDisplay();
     next = null;
     spawnPiece();
     updateHUD();
@@ -594,26 +636,34 @@
   }
 
   function resize() {
-    const maxH = window.innerHeight - 220;
-    const maxW = window.innerWidth - 150;
+    const main = document.getElementById('main');
+    const app = document.getElementById('app');
+    const padding = getComputedStyle(app);
+    const maxH = main.clientHeight - 12;
+    const maxW = app.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight)
+      - document.getElementById('sidebar').offsetWidth - 24;
+    layoutBlocked = maxH < ROWS * 8 || maxW < COLS * 8 || window.innerHeight < 440;
+    layoutNotice.hidden = !layoutBlocked;
+    lastTime = null;
+    updatePauseDisplay();
     CELL = Math.floor(Math.min(maxH / ROWS, maxW / COLS, 32));
-    if (CELL < 12) CELL = 12;
+    if (CELL < 8) CELL = 8;
     boardCanvas.width = COLS * CELL;
     boardCanvas.height = ROWS * CELL;
     draw();
   }
 
   function loop(time) {
-    if (started && !gameOver && !paused) {
-      const delta = time - lastTime;
-      lastTime = time;
+    const delta = lastTime === null ? 0 : Math.max(0, time - lastTime);
+    lastTime = time;
+    if (canAct()) {
       if (mode === 'time') {
         timeLeftMs -= delta;
         if (timeLeftMs <= 0) {
           timeLeftMs = 0;
           updateGoalDisplay();
           finishGame('timeup');
-          rafId = requestAnimationFrame(loop);
+          requestAnimationFrame(loop);
           return;
         }
         updateGoalDisplay();
@@ -628,21 +678,18 @@
         }
         draw();
       }
-    } else {
-      lastTime = time;
     }
-    rafId = requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
   }
 
   // controls
-  document.getElementById('btnLeft').addEventListener('touchstart', e => { e.preventDefault(); move(-1); });
-  document.getElementById('btnRight').addEventListener('touchstart', e => { e.preventDefault(); move(1); });
-  document.getElementById('btnRotate').addEventListener('touchstart', e => { e.preventDefault(); rotate(); });
-  document.getElementById('btnDrop').addEventListener('touchstart', e => { e.preventDefault(); hardDrop(); });
-  document.getElementById('btnLeft').addEventListener('click', () => move(-1));
-  document.getElementById('btnRight').addEventListener('click', () => move(1));
-  document.getElementById('btnRotate').addEventListener('click', () => rotate());
-  document.getElementById('btnDrop').addEventListener('click', () => hardDrop());
+  const actions = { btnLeft: () => move(-1), btnRight: () => move(1),
+    btnRotate: rotate, btnDrop: hardDrop };
+  for (const [id, action] of Object.entries(actions)) {
+    const button = document.getElementById(id);
+    button.addEventListener('touchstart', e => { e.preventDefault(); action(); });
+    button.addEventListener('click', action);
+  }
   document.getElementById('restartBtn').addEventListener('click', () => {
     ensureAudio();
     resetGame();
@@ -672,6 +719,7 @@
     touchStartTime = Date.now();
   }, {passive: true});
   boardCanvas.addEventListener('touchmove', e => {
+    if (touchStartX === null) return;
     const t = e.touches[0];
     const dx = t.clientX - lastMoveX;
     if (Math.abs(dx) > CELL * 0.8) {
@@ -693,25 +741,32 @@
     touchStartX = null;
   });
 
+  boardCanvas.addEventListener('touchcancel', () => { touchStartX = null; });
+
   // keyboard (for testing on PC)
   window.addEventListener('keydown', e => {
+    if (!canAct()) return;
+    if (e.key === ' ' && e.target.closest('button')) return;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', ' '].includes(e.key)) e.preventDefault();
+    if (e.repeat && (e.key === ' ' || e.key === 'ArrowUp')) return;
     if (e.key === 'ArrowLeft') move(-1);
     else if (e.key === 'ArrowRight') move(1);
     else if (e.key === 'ArrowDown') softDrop();
     else if (e.key === 'ArrowUp') rotate();
-    else if (e.key === ' ') { e.preventDefault(); hardDrop(); }
+    else if (e.key === ' ') hardDrop();
   });
 
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', () => {
-    paused = document.hidden;
+    lastTime = null;
+    updatePauseDisplay();
   });
   grid = newGrid();
   started = false;
   refreshStartHighscore();
   updateHUD();
   resize();
-  rafId = requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
