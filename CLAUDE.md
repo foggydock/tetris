@@ -1,4 +1,4 @@
-# tetris（奏志くん向けテトリス）
+# tetris（子ども向けテトリス）
 
 単一HTMLのゲーム。GitHub Pages で `main` を配信している（push すると公開ページに反映される）。
 

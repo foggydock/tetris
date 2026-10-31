@@ -295,21 +295,39 @@
 
   const HS_KEY_PREFIX = 'tetris-soushi-highscore-';
   const HS_KEY_LEGACY = 'tetris-soushi-highscore';
+  const sessionBests = Object.create(null);
+  function validScore(value) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+  }
   function getHighscore(m) {
-    try { return parseInt(localStorage.getItem(HS_KEY_PREFIX + m) || '0', 10) || 0; }
-    catch (e) { return 0; }
+    let best = sessionBests[m] || 0;
+    try {
+      best = Math.max(best, validScore(localStorage.getItem(HS_KEY_PREFIX + m)));
+      // 旧形式は読み取るだけにし、移行時の上書き・削除をしない。
+      if (m === 'lines') best = Math.max(best, validScore(localStorage.getItem(HS_KEY_LEGACY)));
+      const prefix = HS_KEY_PREFIX + m + '-record-';
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          best = Math.max(best, validScore(localStorage.getItem(key)));
+        }
+      }
+    } catch (e) {} // 保存が使えない環境でも、このセッションの記録は保持する。
+    sessionBests[m] = best;
+    return best;
   }
-  function setHighscore(m, v) {
-    try { localStorage.setItem(HS_KEY_PREFIX + m, String(v)); } catch (e) {}
-  }
-  // 旧バージョンの共通ハイスコアが残っていれば、ラインクリアモードの記録として引き継ぐ
-  try {
-    const legacy = localStorage.getItem(HS_KEY_LEGACY);
-    if (legacy !== null && localStorage.getItem(HS_KEY_PREFIX + 'lines') === null) {
-      localStorage.setItem(HS_KEY_PREFIX + 'lines', legacy);
+  function setHighscore(m, value) {
+    const best = getHighscore(m);
+    const score = validScore(value);
+    if (score > best) {
+      sessionBests[m] = score;
+      // 同時に終了したタブ同士が同じキーを低い値で上書きしないよう、
+      // 更新記録をスコア別のキーへ追記する。同点なら同じ値なので競合しない。
+      try { localStorage.setItem(HS_KEY_PREFIX + m + '-record-' + score, String(score)); } catch (e) {}
     }
-    localStorage.removeItem(HS_KEY_LEGACY);
-  } catch (e) {}
+    return getHighscore(m);
+  }
   let highscore = getHighscore('lines');
 
   // --- sound (WebAudio, no files needed) ---
@@ -530,12 +548,9 @@
     if (gameOver) return;
     gameOver = true;
     updatePauseDisplay();
-    let isNewBest = false;
-    if (score > highscore) {
-      highscore = score;
-      setHighscore(mode, highscore);
-      isNewBest = true;
-    }
+    const previousBest = getHighscore(mode);
+    highscore = setHighscore(mode, score);
+    const isNewBest = score > previousBest && score >= highscore;
     updateHUD();
     let title;
     if (reason === 'clear') {
@@ -756,6 +771,13 @@
     else if (e.key === ' ') hardDrop();
   });
 
+  window.addEventListener('storage', e => {
+    if (e.key !== null && !e.key.startsWith(HS_KEY_PREFIX) && e.key !== HS_KEY_LEGACY) return;
+    highscore = getHighscore(mode);
+    updateHUD();
+    refreshStartHighscore();
+    if (gameOver) overlayHighscore.textContent = 'さいこうスコア: ' + highscore;
+  });
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', () => {
     lastTime = null;

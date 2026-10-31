@@ -1,4 +1,4 @@
-const VERSION = 'v4';
+const VERSION = 'v5';
 // 同じドメイン（foggydock.github.io）の他のアプリとキャッシュの置き場が共通なので、消すのはこの接頭辞の古い版だけにする
 const CACHE_PREFIX = 'tetris-';
 const CACHE   = CACHE_PREFIX + VERSION;

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 
 // 実際の画面スクリプトを偽DOM・偽ストレージ・手動時計で実行する。本番の記録には接続しない。
-function app() {
+function app(storage = new Map(), options = {}) {
   const elements = new Map();
   const context2d = new Proxy({}, { get: () => () => {} });
   function element(id) {
@@ -24,9 +24,13 @@ function app() {
     addEventListener(type, fn) { this.listeners[type] = fn; } };
   const window = { innerHeight: 800, listeners: {},
     addEventListener(type, fn) { this.listeners[type] = fn; } };
-  const storage = new Map();
   const sandbox = { document, window, navigator: {}, TetrisLogic: require('../game-logic'),
-    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) },
+    localStorage: {
+      get length() { return storage.size; }, key: i => [...storage.keys()][i],
+      getItem: k => storage.get(k) ?? null,
+      setItem: (k,v) => { if (options.failWrite) throw Error('quota'); storage.set(k,v); },
+      removeItem: k => storage.delete(k)
+    },
     getComputedStyle: () => ({ paddingLeft: '8', paddingRight: '8' }),
     requestAnimationFrame: () => 1, setTimeout: () => 1 };
   const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
@@ -97,4 +101,47 @@ test('中断されたタッチ操作の移動を引き継がない', () => {
   const before = a.state().x;
   board.listeners.touchmove({touches:[{clientX:200,clientY:10}]});
   assert.equal(a.state().x, before);
+});
+const legacyKey = 'tetris-soushi-highscore';
+const linesKey = legacyKey + '-lines';
+test('旧・新形式の高い方を読み、起動時に既存の値を変更・削除しない', () => {
+  for (const [legacy, current] of [['900','100'],['100','900']]) {
+    const storage = new Map([[legacyKey,legacy],[linesKey,current]]);
+    const before = [...storage]; const a = app(storage);
+    assert.equal(a.getHighscore('lines'),900);
+    assert.deepEqual([...storage],before);
+    assert.equal(a.getHighscore('time'),0);
+  }
+});
+test('古いタブの終了が別タブの高い記録を下げない', () => {
+  const storage = new Map(); const a=app(storage), b=app(storage);
+  a.start('lines'); b.start('lines');
+  b.setHighscore('lines',900); a.setHighscore('lines',100); a.finishGame('over');
+  assert.equal(a.getHighscore('lines'),900);
+  assert.equal(app(storage).getHighscore('lines'),900);
+  assert.equal(a.element('overlayHighscore').textContent,'さいこうスコア: 900');
+  assert.doesNotMatch(a.element('overlayTitle').textContent,/さいこうきろく/);
+});
+test('保存途中に別タブが高い値を書いてもスコア別記録で競合しない', () => {
+  const storage = new Map(); const a=app(storage), b=app(storage);
+  const originalSet = storage.set.bind(storage); let interleaved=false;
+  storage.set = (key,value) => {
+    if (!interleaved) { interleaved=true; b.setHighscore('lines',900); }
+    return originalSet(key,value);
+  };
+  a.setHighscore('lines',100);
+  assert.equal(app(storage).getHighscore('lines'),900);
+});
+test('保存失敗でもゲーム終了を妨げず、セッションの最高値を保持する', () => {
+  const storage = new Map([[linesKey,'500']]); const a=app(storage,{failWrite:true});
+  a.start('lines'); assert.equal(a.setHighscore('lines',900),900);
+  a.finishGame('over'); assert.equal(a.state().gameOver,true);
+  assert.equal(a.getHighscore('lines'),900);
+  assert.equal(storage.get(linesKey),'500');
+});
+test('別タブの記録更新を受けたら表示も最新になる', () => {
+  const storage = new Map(); const a=app(storage),b=app(storage);
+  a.start('lines'); b.setHighscore('lines',900);
+  a.window.listeners.storage({key:linesKey+'-record-900'});
+  assert.equal(a.element('highscore').textContent,900);
 });

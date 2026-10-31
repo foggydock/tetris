@@ -11,7 +11,7 @@ function worker({installFails=false,offline=false,status=200}={}) {
     URL, Response,
     self:{ location:new URL('https://example.test/tetris/sw.js'),addEventListener:(key,fn)=>handlers[key]=fn,
       skipWaiting:()=>{skipped=true;},clients:{claim:async()=>{}} },
-    caches:{open:async()=>cache,keys:async()=>['other-app-v1','tetris-v3','tetris-v4'],delete:async key=>deleted.push(key)},
+    caches:{open:async()=>cache,keys:async()=>['other-app-v1','tetris-v4','tetris-v5'],delete:async key=>deleted.push(key)},
     fetch:async()=>{if(offline) throw Error('offline'); return new Response('network',{status});}
   });
   return {handlers,deleted,get skipped(){return skipped;},get added(){return added;}};
@@ -26,7 +26,7 @@ test('必須ファイルを一括保存し、他アプリのキャッシュは�
   w.handlers.install({waitUntil:p=>pending=p});await pending;
   assert.equal(w.added.length,6); assert.equal(w.skipped,true);
   w.handlers.activate({waitUntil:p=>pending=p});await pending;
-  assert.deepEqual(w.deleted,['tetris-v3']);
+  assert.deepEqual(w.deleted,['tetris-v4']);
 });
 for(const scenario of [{offline:true},{status:503}])test(`オフライン/サーバーエラー時は保存済み画面を返す ${JSON.stringify(scenario)}`,async()=>{
   const w=worker(scenario);let response;
